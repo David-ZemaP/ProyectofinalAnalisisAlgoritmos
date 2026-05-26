@@ -5,10 +5,10 @@
 #include "ejercicio5.h"
 
 int main() {
-    string archivoAeropuertos = "airports_clean_final.csv";
-    string archivoRutas = "routes_graph_validated.csv";
-    string archivoAerolineas = "airlines_clean_final.csv";
-    string archivoMultigrafo = "routes_multigraph_v5.csv";
+    string archivoAeropuertos = "data/airports_clean_final.csv";
+    string archivoRutas = "data/routes_graph_validated.csv";
+    string archivoAerolineas = "data/airlines_clean_final.csv";
+    string archivoMultigrafo = "data/routes_multigraph_v5.csv";
 
     unordered_map<int, Aeropuerto> aeropuertos;
     unordered_map<int, vector<Arista>> grafoVuelos;
