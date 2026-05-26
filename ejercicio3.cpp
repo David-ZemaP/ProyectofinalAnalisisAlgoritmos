@@ -1,34 +1,26 @@
 #include "ejercicio3.h"
 
-void Ejercicio3(const unordered_map<int, Aeropuerto>& aeropuertos,
-                const unordered_map<int, vector<Arista>>& grafo) {
- 
-    auto componentes = encontrarSCCs(grafo);
+struct ResultadoDiametro {
+    int nodoOrigen;
+    int nodoDestino;
+    double distancia;
+};
 
-    if (componentes.empty() || componentes[0].size() < 2) {
-        cout << "No hay suficientes conexiones.\n";
-        return;
-    }
-
-    const vector<int>& scc = componentes[0];
+static ResultadoDiametro calcularDiametroSCC(
+    const vector<int>& scc,
+    const unordered_map<int, vector<Arista>>& grafo)
+{
     int n = scc.size();
 
-    cout << "SCC mas grande: " << n << " aeropuertos\n";
-    cout << "Calculando diametro exacto (Dijkstra desde cada nodo)...\n";
-    cout << "  Nodos a procesar: " << n << "\n";
-
     unordered_map<int, int> indice;
+    indice.reserve(n);
     for (int i = 0; i < n; i++) {
         indice[scc[i]] = i;
     }
 
-    int nodoA = -1;
-    int nodoB = -1;
+    int nodoA = scc[0];
+    int nodoB = scc[0];
     double maxDist = 0.0;
-
-    auto inicio = high_resolution_clock::now();
-    int procesados = 0;
-    int proximoReporte = 5;
 
     for (int origen : scc) {
         vector<double> dist(n, numeric_limits<double>::max());
@@ -75,63 +67,59 @@ void Ejercicio3(const unordered_map<int, Aeropuerto>& aeropuertos,
                 nodoB = scc[i];
             }
         }
+    }
 
-        procesados++;
-        int porcentaje = (procesados * 100) / n;
+    return {nodoA, nodoB, maxDist};
+}
 
-        if (porcentaje >= proximoReporte) {
-            cout << "\r  Progreso: " << porcentaje
-                 << "% (" << procesados << "/" << n << ")" << flush;
-            proximoReporte += 5;
+static void mostrarAeropuerto(const Aeropuerto& ap) {
+    cout << ap.nombre;
+    if (!ap.iata.empty() && ap.iata != "\\N") {
+        cout << " (" << ap.iata << ")";
+    }
+    cout << " - " << ap.ciudad << ", " << ap.pais;
+}
+
+void Ejercicio3(const unordered_map<int, Aeropuerto>& aeropuertos,
+                const unordered_map<int, vector<Arista>>& grafo)
+{
+    auto componentes = encontrarSCCs(grafo);
+
+    if (componentes.empty()) {
+        cout << "No hay conexiones en el grafo.\n";
+        return;
+    }
+
+    int nodoA = -1, nodoB = -1;
+    double maxDist = 0.0;
+
+    for (const auto& scc : componentes) {
+        if (scc.size() < 2) continue;
+
+        auto [origen, destino, dist] = calcularDiametroSCC(scc, grafo);
+
+        if (dist > maxDist) {
+            maxDist = dist;
+            nodoA = origen;
+            nodoB = destino;
         }
     }
 
-    cout << "\r  Progreso: 100% (" << n << "/" << n << ")\n";
-
-    auto duracion = duration_cast<seconds>(
-        high_resolution_clock::now() - inicio
-    ).count();
+    if (nodoA == -1 || nodoB == -1 || maxDist == 0.0) {
+        cout << "No se encontraron pares de aeropuertos conectados.\n";
+        return;
+    }
 
     auto apA = aeropuertos.find(nodoA);
     auto apB = aeropuertos.find(nodoB);
 
-    auto mostrarAeropuerto = [](const auto& it) {
-        cout << it->second.nombre;
-
-        if (!it->second.iata.empty() && it->second.iata != "\\N") {
-            cout << " (" << it->second.iata << ")";
-        }
-
-        cout << " - " << it->second.ciudad << ", " << it->second.pais;
-    };
-
-    cout << "\nRESULTADO:\n";
-    cout << "  Par mas distante:\n";
-
     if (apA != aeropuertos.end() && apB != aeropuertos.end()) {
-        cout << "    A: ";
-        mostrarAeropuerto(apA);
-        cout << "\n";
-
-        cout << "    B: ";
-        mostrarAeropuerto(apB);
-        cout << "\n";
-
-        cout << "  Distancia: " << fixed << setprecision(0)
+        cout << "=== RETO 3: LA MAXIMA EFICIENCIA (DIAMETRO) ===\n\n";
+        cout << "Aeropuerto A: "; mostrarAeropuerto(apA->second); cout << "\n";
+        cout << "Aeropuerto B: "; mostrarAeropuerto(apB->second); cout << "\n";
+        cout << "Distancia total por rutas: " << fixed << setprecision(0)
              << maxDist << " km\n";
-
-        double directa = calcularHaversine(
-            apA->second.latitud,
-            apA->second.longitud,
-            apB->second.latitud,
-            apB->second.longitud
-        );
-
-        cout << "  Linea recta: " << fixed << setprecision(0)
-             << directa << " km\n";
     } else {
-        cout << "    No se pudieron recuperar los aeropuertos del resultado.\n";
+        cout << "Error: no se pudieron recuperar los aeropuertos del resultado.\n";
     }
-
-    cout << "  Tiempo total: " << duracion << " s\n";
 }

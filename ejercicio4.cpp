@@ -1,9 +1,9 @@
 #include "ejercicio4.h"
 
-void Ejercicio4(const unordered_map<int, Aeropuerto>& aeropuertos,
-                const unordered_map<int, vector<Arista>>& grafo) {
-
-
+static unordered_map<int, vector<pair<int, double>>> filtrarSudamerica(
+    const unordered_map<int, Aeropuerto>& aeropuertos,
+    const unordered_map<int, vector<Arista>>& grafo)
+{
     unordered_set<string> paisesSA = {
         "Argentina", "Bolivia", "Brazil", "Chile", "Colombia", "Ecuador",
         "Guyana", "Paraguay", "Peru", "Suriname", "Uruguay",
@@ -11,118 +11,87 @@ void Ejercicio4(const unordered_map<int, Aeropuerto>& aeropuertos,
     };
 
     unordered_set<int> esSA;
+    esSA.reserve(aeropuertos.size());
 
-    for (const auto& par : aeropuertos) {
-        if (paisesSA.find(par.second.pais) != paisesSA.end()) {
-            esSA.insert(par.first);
+    for (const auto& [id, ap] : aeropuertos) {
+        if (paisesSA.count(ap.pais)) {
+            esSA.insert(id);
         }
     }
-
-    cout << "Aeropuertos en Sudamerica: " << esSA.size() << "\n";
 
     unordered_map<int, vector<pair<int, double>>> grafoSA;
 
-    for (const auto& par : grafo) {
-        int idOrigen = par.first;
+    for (const auto& [idOrigen, aristas] : grafo) {
+        if (!esSA.count(idOrigen)) continue;
 
-        if (esSA.find(idOrigen) == esSA.end()) {
-            continue;
-        }
+        for (const Arista& ar : aristas) {
+            if (!esSA.count(ar.idDestino)) continue;
 
-        for (const Arista& ar : par.second) {
-            int idDestino = ar.idDestino;
-
-            if (esSA.find(idDestino) == esSA.end()) {
-                continue;
-            }
-
-            grafoSA[idOrigen].push_back({idDestino, ar.distancia});
-            grafoSA[idDestino].push_back({idOrigen, ar.distancia});
+            grafoSA[idOrigen].push_back({ar.idDestino, ar.distancia});
+            grafoSA[ar.idDestino].push_back({idOrigen, ar.distancia});
         }
     }
 
-    cout << "Aeropuertos SA con rutas: " << grafoSA.size() << "\n";
+    return grafoSA;
+}
 
-    if (grafoSA.size() < 2) {
-        cout << "No hay suficientes rutas entre SA.\n";
-        return;
-    }
-
-    unordered_map<string, int> xPais;
-
-    for (const auto& par : grafoSA) {
-        auto it = aeropuertos.find(par.first);
-
-        if (it != aeropuertos.end()) {
-            xPais[it->second.pais]++;
-        }
-    }
-
-    cout << "\nPor pais:\n";
-
-    for (const auto& p : xPais) {
-        cout << "  " << p.first << ": " << p.second << "\n";
-    }
-
+static vector<int> componenteMasGrande(
+    const unordered_map<int, vector<pair<int, double>>>& grafoSA)
+{
     unordered_set<int> visit;
     vector<vector<int>> componentes;
 
-    for (const auto& par : grafoSA) {
-        int inicio = par.first;
-
-        if (visit.find(inicio) != visit.end()) {
-            continue;
-        }
+    for (const auto& [inicio, _ign] : grafoSA) {
+        if (visit.count(inicio)) continue;
 
         vector<int> comp;
         queue<int> q;
-
         q.push(inicio);
         visit.insert(inicio);
 
         while (!q.empty()) {
             int actual = q.front();
             q.pop();
-
             comp.push_back(actual);
 
             auto it = grafoSA.find(actual);
+            if (it == grafoSA.end()) continue;
 
-            if (it == grafoSA.end()) {
-                continue;
-            }
-
-            for (const auto& [vecino, distancia] : it->second) {
-                if (visit.find(vecino) == visit.end()) {
+            for (const auto& [vecino, _ign2] : it->second) {
+                if (!visit.count(vecino)) {
                     visit.insert(vecino);
                     q.push(vecino);
                 }
             }
         }
 
-        componentes.push_back(comp);
+        componentes.push_back(move(comp));
     }
 
     sort(componentes.begin(), componentes.end(),
-         [](const auto& a, const auto& b) {
-             return a.size() > b.size();
-         });
+         [](const auto& a, const auto& b) { return a.size() > b.size(); });
 
-    const vector<int>& compGigante = componentes[0];
-    int n = compGigante.size();
+    if (componentes.empty()) return {};
+    return move(componentes[0]);
+}
 
-    cout << "\nComponente mas grande con rutas entre SA: "
-         << n << " aeropuertos\n";
+struct ResultadoMST {
+    vector<AristaMST> aristas;
+    double pesoTotal;
+};
+
+static ResultadoMST calcularMST(
+    const vector<int>& nodos,
+    const unordered_map<int, vector<pair<int, double>>>& grafoSA,
+    const unordered_map<int, Aeropuerto>& aeropuertos)
+{
+    int n = nodos.size();
 
     unordered_map<int, int> idAIdx;
-
+    idAIdx.reserve(n);
     for (int i = 0; i < n; i++) {
-        idAIdx[compGigante[i]] = i;
+        idAIdx[nodos[i]] = i;
     }
-
-    cout << "Construyendo MST (Prim con heap)...\n";
-
-    auto inicioTiempo = high_resolution_clock::now();
 
     vector<bool> enMST(n, false);
     vector<double> minDist(n, numeric_limits<double>::max());
@@ -131,29 +100,20 @@ void Ejercicio4(const unordered_map<int, Aeropuerto>& aeropuertos,
     using Par = pair<double, int>;
     priority_queue<Par, vector<Par>, greater<Par>> pq;
 
-    minDist[idAIdx[compGigante[0]]] = 0.0;
-    pq.push({0.0, compGigante[0]});
-
-    double pesoTotal = 0.0;
+    minDist[idAIdx[nodos[0]]] = 0.0;
+    pq.push({0.0, nodos[0]});
 
     while (!pq.empty()) {
-        auto [distanciaActual, nodo] = pq.top();
+        auto [distActual, nodo] = pq.top();
         pq.pop();
 
         int u = idAIdx[nodo];
-
-        if (enMST[u]) {
-            continue;
-        }
+        if (enMST[u]) continue;
 
         enMST[u] = true;
-        pesoTotal += distanciaActual;
 
         auto it = grafoSA.find(nodo);
-
-        if (it == grafoSA.end()) {
-            continue;
-        }
+        if (it == grafoSA.end()) continue;
 
         for (const auto& [vecino, distancia] : it->second) {
             int v = idAIdx[vecino];
@@ -166,37 +126,64 @@ void Ejercicio4(const unordered_map<int, Aeropuerto>& aeropuertos,
         }
     }
 
-    auto duracion = duration_cast<milliseconds>(
-        high_resolution_clock::now() - inicioTiempo
-    ).count();
-
-    vector<AristaMST> aristas;
+    ResultadoMST res;
+    res.pesoTotal = 0.0;
 
     for (int v = 0; v < n; v++) {
-        if (padre[v] == -1) {
-            continue;
-        }
+        if (padre[v] == -1) continue;
 
         int u = padre[v];
+        res.pesoTotal += minDist[v];
 
-        const auto& apU = aeropuertos.at(compGigante[u]);
-        const auto& apV = aeropuertos.at(compGigante[v]);
+        const auto& apU = aeropuertos.at(nodos[u]);
+        const auto& apV = aeropuertos.at(nodos[v]);
 
-        aristas.push_back({
-            compGigante[u],
-            compGigante[v],
-            minDist[v],
-            apU.nombre,
-            apV.nombre,
-            apU.iata,
-            apV.iata
+        res.aristas.push_back({
+            nodos[u], nodos[v], minDist[v],
+            apU.nombre, apV.nombre, apU.iata, apV.iata
         });
     }
 
-    cout << "\n=== RESULTADOS ===\n";
-    cout << "Kilometraje total: "
-         << fixed << setprecision(0) << pesoTotal << " km\n";
-    cout << "Rutas en el arbol: " << aristas.size() << "\n";
-    cout << "Aeropuertos conectados: " << n << "\n";
-    cout << "Tiempo: " << duracion << " ms\n";
+    sort(res.aristas.begin(), res.aristas.end(),
+         [](const AristaMST& a, const AristaMST& b) {
+             return a.peso < b.peso;
+         });
+
+    return res;
+}
+
+void Ejercicio4(const unordered_map<int, Aeropuerto>& aeropuertos,
+                const unordered_map<int, vector<Arista>>& grafo)
+{
+    auto grafoSA = filtrarSudamerica(aeropuertos, grafo);
+
+    if (grafoSA.size() < 2) {
+        cout << "No hay suficientes rutas entre aeropuertos sudamericanos.\n";
+        return;
+    }
+
+    auto compGigante = componenteMasGrande(grafoSA);
+    int n = compGigante.size();
+
+    if (n < 2) {
+        cout << "No hay suficientes aeropuertos conectados.\n";
+        return;
+    }
+
+    auto mst = calcularMST(compGigante, grafoSA, aeropuertos);
+
+    cout << "=== RETO 4: RED MINIMA DE SUDAMERICA ===\n\n";
+    cout << "Aeropuertos conectados: " << n << "\n\n";
+    cout << "Red de rutas minima (ordenada por distancia):\n";
+
+    for (size_t i = 0; i < mst.aristas.size(); i++) {
+        const auto& ar = mst.aristas[i];
+        cout << "  " << (i + 1) << ". "
+             << ar.nombreU << " (" << ar.iataU << ")  --  "
+             << ar.nombreV << " (" << ar.iataV << ")  |  "
+             << fixed << setprecision(0) << ar.peso << " km\n";
+    }
+
+    cout << "\nKilometraje total: " << fixed << setprecision(0)
+         << mst.pesoTotal << " km\n";
 }
