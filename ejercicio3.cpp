@@ -1,61 +1,52 @@
 #include "ejercicio3.h"
 
-struct ResultadoDiametro {
-    int nodoOrigen;
-    int nodoDestino;
-    double distancia;
-};
+typedef pair<double, int> ParDist;
 
-static ResultadoDiametro calcularDiametroSCC(
+static void calcularDiametroSCC(
     const vector<int>& scc,
-    const unordered_map<int, vector<Arista>>& grafo)
+    const unordered_map<int, vector<Arista>>& grafo,
+    int& nodoA, int& nodoB, double& maxDist)
 {
-    int n = scc.size();
+    int n = (int)scc.size();
 
     unordered_map<int, int> indice;
-    indice.reserve(n);
     for (int i = 0; i < n; i++) {
         indice[scc[i]] = i;
     }
 
-    int nodoA = scc[0];
-    int nodoB = scc[0];
-    double maxDist = 0.0;
+    nodoA = scc[0];
+    nodoB = scc[0];
+    maxDist = 0.0;
 
-    for (int origen : scc) {
+    for (int iOrigen = 0; iOrigen < n; iOrigen++) {
+        int origen = scc[iOrigen];
         vector<double> dist(n, numeric_limits<double>::max());
-        priority_queue<
-            pair<double, int>,
-            vector<pair<double, int>>,
-            greater<pair<double, int>>
-        > pq;
+        priority_queue<ParDist, vector<ParDist>, greater<ParDist>> pq;
 
         dist[indice[origen]] = 0.0;
         pq.push({0.0, origen});
 
         while (!pq.empty()) {
-            auto [distActual, actual] = pq.top();
+            double distActual = pq.top().first;
+            int actual = pq.top().second;
             pq.pop();
 
-            auto itActual = indice.find(actual);
-            if (itActual == indice.end()) continue;
-
-            int idxActual = itActual->second;
+            if (indice.count(actual) == 0) continue;
+            int idxActual = indice[actual];
             if (distActual > dist[idxActual]) continue;
 
-            auto itGrafo = grafo.find(actual);
-            if (itGrafo == grafo.end()) continue;
+            if (grafo.count(actual) == 0) continue;
+            const vector<Arista>& aristas = grafo.at(actual);
+            for (int i = 0; i < (int)aristas.size(); i++) {
+                int idDestino = aristas[i].idDestino;
+                if (indice.count(idDestino) == 0) continue;
 
-            for (const Arista& arista : itGrafo->second) {
-                auto itDestino = indice.find(arista.idDestino);
-                if (itDestino == indice.end()) continue;
-
-                int idxDestino = itDestino->second;
-                double nuevaDist = distActual + arista.distancia;
+                int idxDestino = indice[idDestino];
+                double nuevaDist = distActual + aristas[i].distancia;
 
                 if (nuevaDist < dist[idxDestino]) {
                     dist[idxDestino] = nuevaDist;
-                    pq.push({nuevaDist, arista.idDestino});
+                    pq.push({nuevaDist, idDestino});
                 }
             }
         }
@@ -68,8 +59,6 @@ static ResultadoDiametro calcularDiametroSCC(
             }
         }
     }
-
-    return {nodoA, nodoB, maxDist};
 }
 
 static void mostrarAeropuerto(const Aeropuerto& ap) {
@@ -83,7 +72,7 @@ static void mostrarAeropuerto(const Aeropuerto& ap) {
 void Ejercicio3(const unordered_map<int, Aeropuerto>& aeropuertos,
                 const unordered_map<int, vector<Arista>>& grafo)
 {
-    auto componentes = encontrarSCCs(grafo);
+    vector<vector<int>> componentes = encontrarSCCs(grafo);
 
     if (componentes.empty()) {
         cout << "No hay conexiones en el grafo.\n";
@@ -93,15 +82,18 @@ void Ejercicio3(const unordered_map<int, Aeropuerto>& aeropuertos,
     int nodoA = -1, nodoB = -1;
     double maxDist = 0.0;
 
-    for (const auto& scc : componentes) {
-        if (scc.size() < 2) continue;
+    for (int i = 0; i < (int)componentes.size(); i++) {
+        const vector<int>& scc = componentes[i];
+        if ((int)scc.size() < 2) continue;
 
-        auto [origen, destino, dist] = calcularDiametroSCC(scc, grafo);
+        int auxNodoA, auxNodoB;
+        double auxDist;
+        calcularDiametroSCC(scc, grafo, auxNodoA, auxNodoB, auxDist);
 
-        if (dist > maxDist) {
-            maxDist = dist;
-            nodoA = origen;
-            nodoB = destino;
+        if (auxDist > maxDist) {
+            maxDist = auxDist;
+            nodoA = auxNodoA;
+            nodoB = auxNodoB;
         }
     }
 
@@ -110,13 +102,12 @@ void Ejercicio3(const unordered_map<int, Aeropuerto>& aeropuertos,
         return;
     }
 
-    auto apA = aeropuertos.find(nodoA);
-    auto apB = aeropuertos.find(nodoB);
-
-    if (apA != aeropuertos.end() && apB != aeropuertos.end()) {
+    if (aeropuertos.count(nodoA) > 0 && aeropuertos.count(nodoB) > 0) {
+        const Aeropuerto& apA = aeropuertos.at(nodoA);
+        const Aeropuerto& apB = aeropuertos.at(nodoB);
         cout << "=== RETO 3: LA MAXIMA EFICIENCIA (DIAMETRO) ===\n\n";
-        cout << "Aeropuerto A: "; mostrarAeropuerto(apA->second); cout << "\n";
-        cout << "Aeropuerto B: "; mostrarAeropuerto(apB->second); cout << "\n";
+        cout << "Aeropuerto A: "; mostrarAeropuerto(apA); cout << "\n";
+        cout << "Aeropuerto B: "; mostrarAeropuerto(apB); cout << "\n";
         cout << "Distancia total por rutas: " << fixed << setprecision(0)
              << maxDist << " km\n";
     } else {

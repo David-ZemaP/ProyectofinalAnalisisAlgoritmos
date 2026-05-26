@@ -4,7 +4,8 @@ vector<string> dividirCSV(const string& linea) {
     vector<string> valores;
     string valor;
     bool dentroDeComillas = false;
-    for (char c : linea) {
+    for (int i = 0; i < (int)linea.size(); i++) {
+        char c = linea[i];
         if (c == '"') {
             dentroDeComillas = !dentroDeComillas;
         } else if (c == ',' && !dentroDeComillas) {
@@ -19,8 +20,8 @@ vector<string> dividirCSV(const string& linea) {
 }
 
 string aMinusculas(string texto) {
-    for (char& c : texto) {
-        c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+    for (int i = 0; i < (int)texto.size(); i++) {
+        texto[i] = static_cast<char>(tolower(static_cast<unsigned char>(texto[i])));
     }
     return texto;
 }
@@ -49,7 +50,7 @@ unordered_map<int, Aeropuerto> cargarAeropuertos(const string& rutaArchivo) {
     int omitidos = 0;
     while (getline(archivo, linea)) {
         vector<string> fila = dividirCSV(linea);
-        if (fila.size() < 8) { omitidos++; continue; }
+        if ((int)fila.size() < 8) { omitidos++; continue; }
         try {
             Aeropuerto a;
             a.id = stoi(fila[0]);
@@ -81,15 +82,15 @@ unordered_map<int, vector<Arista>> cargarRutas(
     int omitidas = 0, invalidas = 0;
     while (getline(archivo, linea)) {
         vector<string> fila = dividirCSV(linea);
-        if (fila.size() < 2) { omitidas++; continue; }
+        if ((int)fila.size() < 2) { omitidas++; continue; }
         try {
             int idOrigen = stoi(fila[0]);
             int idDestino = stoi(fila[1]);
-            auto itO = aeropuertos.find(idOrigen);
-            auto itD = aeropuertos.find(idDestino);
-            if (itO != aeropuertos.end() && itD != aeropuertos.end()) {
-                double dist = calcularHaversine(itO->second.latitud, itO->second.longitud,
-                                                itD->second.latitud, itD->second.longitud);
+            if (aeropuertos.count(idOrigen) > 0 && aeropuertos.count(idDestino) > 0) {
+                const Aeropuerto& apO = aeropuertos.at(idOrigen);
+                const Aeropuerto& apD = aeropuertos.at(idDestino);
+                double dist = calcularHaversine(apO.latitud, apO.longitud,
+                                                apD.latitud, apD.longitud);
                 grafo[idOrigen].push_back({idDestino, dist});
             } else { invalidas++; }
         } catch (...) { omitidas++; }
@@ -104,79 +105,156 @@ int buscarAeropuerto(const unordered_map<int, Aeropuerto>& aeropuertos, const st
 
     int id = -1;
     try { id = stoi(consulta); } catch (...) {}
-    if (id != -1 && aeropuertos.find(id) != aeropuertos.end()) return id;
+    if (id != -1 && aeropuertos.count(id) > 0) return id;
 
+    vector<int> ids;
+    for (pair<const int, Aeropuerto> p : aeropuertos) ids.push_back(p.first);
 
-    for (const auto& par : aeropuertos)
-        if (aMinusculas(par.second.iata) == consMin) return par.second.id;
+    for (int i = 0; i < (int)ids.size(); i++) {
+        const Aeropuerto& ap = aeropuertos.at(ids[i]);
+        if (aMinusculas(ap.iata) == consMin) return ap.id;
+    }
 
     int mejorId = -1;
     size_t menorPos = string::npos;
-    for (const auto& par : aeropuertos) {
-        size_t pos = aMinusculas(par.second.nombre).find(consMin);
+    for (int i = 0; i < (int)ids.size(); i++) {
+        const Aeropuerto& ap = aeropuertos.at(ids[i]);
+        size_t pos = aMinusculas(ap.nombre).find(consMin);
         if (pos != string::npos && (menorPos == string::npos || pos < menorPos)) {
             menorPos = pos;
-            mejorId = par.second.id;
+            mejorId = ap.id;
         }
     }
     if (mejorId != -1) return mejorId;
 
-    for (const auto& par : aeropuertos)
-        if (aMinusculas(par.second.ciudad).find(consMin) != string::npos)
-            return par.second.id;
+    for (int i = 0; i < (int)ids.size(); i++) {
+        const Aeropuerto& ap = aeropuertos.at(ids[i]);
+        if (aMinusculas(ap.ciudad).find(consMin) != string::npos)
+            return ap.id;
+    }
 
     return -1;
 }
 
-vector<vector<int>> encontrarSCCs(const unordered_map<int, vector<Arista>>& grafo) {
-    // Convertir a lista de adyacencia simple (sin distancias)
-    unordered_map<int, vector<int>> g;
-    for (const auto& par : grafo)
-        for (const Arista& ar : par.second)
-            g[par.first].push_back(ar.idDestino);
+static bool compararSCC(const vector<int>& a, const vector<int>& b) {
+    return a.size() > b.size();
+}
 
-    // Tarjan's SCC algorithm
-    unordered_map<int, int> idx, low;
+static void dfsTarjan(int u,
+    const unordered_map<int, vector<int>>& g,
+    unordered_map<int, int>& idx,
+    unordered_map<int, int>& low,
+    unordered_map<int, bool>& enPila,
+    stack<int>& pila,
+    int& contador,
+    vector<vector<int>>& componentes)
+{
+    contador++;
+    idx[u] = contador;
+    low[u] = contador;
+    pila.push(u);
+    enPila[u] = true;
+
+    if (g.count(u) > 0) {
+        const vector<int>& vecinos = g.at(u);
+        for (int i = 0; i < (int)vecinos.size(); i++) {
+            int v = vecinos[i];
+            if (idx.count(v) == 0) {
+                dfsTarjan(v, g, idx, low, enPila, pila, contador, componentes);
+                low[u] = min(low[u], low[v]);
+            } else if (enPila[v]) {
+                low[u] = min(low[u], idx[v]);
+            }
+        }
+    }
+
+    if (low[u] == idx[u]) {
+        vector<int> comp;
+        int v;
+        do {
+            v = pila.top(); pila.pop();
+            enPila[v] = false;
+            comp.push_back(v);
+        } while (v != u);
+        componentes.push_back(comp);
+    }
+}
+
+vector<vector<int>> encontrarSCCs(const unordered_map<int, vector<Arista>>& grafo) {
+    unordered_map<int, vector<int>> g;
+
+    vector<int> origenes;
+    for (pair<const int, vector<Arista>> p : grafo) origenes.push_back(p.first);
+
+    for (int i = 0; i < (int)origenes.size(); i++) {
+        int idOrigen = origenes[i];
+        const vector<Arista>& aristas = grafo.at(idOrigen);
+        for (int j = 0; j < (int)aristas.size(); j++) {
+            g[idOrigen].push_back(aristas[j].idDestino);
+        }
+    }
+
+    unordered_map<int, int> idx;
+    unordered_map<int, int> low;
     unordered_map<int, bool> enPila;
     stack<int> pila;
     int contador = 0;
     vector<vector<int>> componentes;
 
-    function<void(int)> tarjan = [&](int u) {
-        idx[u] = low[u] = ++contador;
-        pila.push(u);
-        enPila[u] = true;
+    vector<int> nodos;
+    for (pair<const int, vector<int>> p : g) nodos.push_back(p.first);
 
-        auto it = g.find(u);
-        if (it != g.end()) {
-            for (int v : it->second) {
-                if (idx.find(v) == idx.end()) {
-                    tarjan(v);
-                    low[u] = min(low[u], low[v]);
-                } else if (enPila[v]) {
-                    low[u] = min(low[u], idx[v]);
-                }
-            }
+    for (int i = 0; i < (int)nodos.size(); i++) {
+        int u = nodos[i];
+        if (idx.count(u) == 0) {
+            dfsTarjan(u, g, idx, low, enPila, pila, contador, componentes);
         }
+    }
 
-        if (low[u] == idx[u]) {
-            vector<int> comp;
-            int v;
-            do {
-                v = pila.top(); pila.pop();
-                enPila[v] = false;
-                comp.push_back(v);
-            } while (v != u);
-            componentes.push_back(comp);
-        }
-    };
-
-    for (const auto& par : g)
-        if (idx.find(par.first) == idx.end())
-            tarjan(par.first);
-
-    sort(componentes.begin(), componentes.end(),
-         [](const auto& a, const auto& b) { return a.size() > b.size(); });
-
+    sort(componentes.begin(), componentes.end(), compararSCC);
     return componentes;
+}
+
+unordered_map<int, Aerolinea> cargarAerolineas(const string& rutaArchivo) {
+    unordered_map<int, Aerolinea> aerolineas;
+    ifstream archivo(rutaArchivo);
+    if (!archivo.is_open())
+        throw runtime_error("No se pudo abrir el archivo de aerolineas: " + rutaArchivo);
+
+    string linea;
+    getline(archivo, linea);
+    while (getline(archivo, linea)) {
+        stringstream ss(linea);
+        string id_str, code;
+        if (getline(ss, id_str, ',') && getline(ss, code, ',')) {
+            try {
+                int id = stoi(id_str);
+                aerolineas[id] = {id, code};
+            } catch (...) {}
+        }
+    }
+    return aerolineas;
+}
+
+Multigrafo cargarMultigrafoAirline(const string& rutaArchivo) {
+    Multigrafo grafo;
+    ifstream archivo(rutaArchivo);
+    if (!archivo.is_open())
+        throw runtime_error("No se pudo abrir el archivo multigrafo: " + rutaArchivo);
+
+    string linea;
+    getline(archivo, linea);
+    while (getline(archivo, linea)) {
+        stringstream ss(linea);
+        string src_str, dest_str, airline_str;
+        if (getline(ss, src_str, ',') && getline(ss, dest_str, ',') && getline(ss, airline_str, ',')) {
+            try {
+                int src = stoi(src_str);
+                int dest = stoi(dest_str);
+                int aid = stoi(airline_str);
+                grafo[src].push_back({dest, aid});
+            } catch (...) {}
+        }
+    }
+    return grafo;
 }

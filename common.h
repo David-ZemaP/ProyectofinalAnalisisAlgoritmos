@@ -16,11 +16,8 @@
 #include <limits>
 #include <stack>
 #include <iomanip>
-#include <chrono>
-#include <functional>
 
 using namespace std;
-using namespace chrono;
 
 struct Aeropuerto {
     int id;
@@ -38,17 +35,18 @@ struct Arista {
     double distancia;
 };
 
-struct ResultadoBFS {
-    unordered_set<int> aeropuertosAlcanzables;
-    unordered_map<int, int> vuelosMinimos;
-    unordered_map<int, int> mapaPadres;
+struct Aerolinea {
+    int id;
+    string codigo;
 };
 
-struct AristaMST {
-    int u, v;
-    double peso;
-    string nombreU, nombreV, iataU, iataV;
+struct AristaAirline {
+    int idDestino;
+    int idAerolinea;
 };
+
+typedef unordered_map<int, vector<AristaAirline>> Multigrafo;
+
 vector<string> dividirCSV(const string& linea);
 string aMinusculas(string texto);
 double calcularHaversine(double lat1, double lon1, double lat2, double lon2);
@@ -57,5 +55,8 @@ int buscarAeropuerto(const unordered_map<int, Aeropuerto>& aeropuertos, const st
 unordered_map<int, Aeropuerto> cargarAeropuertos(const string& rutaArchivo);
 unordered_map<int, vector<Arista>> cargarRutas(const string& rutaArchivo, const unordered_map<int, Aeropuerto>& aeropuertos);
 vector<vector<int>> encontrarSCCs(const unordered_map<int, vector<Arista>>& grafo);
+
+unordered_map<int, Aerolinea> cargarAerolineas(const string& rutaArchivo);
+Multigrafo cargarMultigrafoAirline(const string& rutaArchivo);
 
 #endif
